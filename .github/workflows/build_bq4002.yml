@@ -1,0 +1,61 @@
+name: Build towa kernel
+
+on:
+  push:
+    branches: [ j1p-port ]
+  workflow_dispatch:   # cho phép bấm "Run workflow" thủ công trên tab Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex libssl-dev \
+            libncurses5-dev device-tree-compiler \
+            kmod cpio rsync u-boot-tools
+
+      # compiler-gcc.h của tree này đòi GCC >= 5.1 (đã bị bump khi merge
+      # security patch từ kernel mới hơn), nên GCC 4.9 không dùng được nữa.
+      # Dùng thẳng cross-toolchain có sẵn trong apt của Ubuntu cho ổn định,
+      # tránh phụ thuộc link tải ngoài (Linaro release site không còn ổn định).
+      - name: Install cross-compile toolchains
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+                                   gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+
+      - name: Build kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          make O=out PQ4002_defconfig
+          make O=out -j"$(nproc)" 2>&1 | tee build.log
+
+      # Log luôn được lưu lại dù build fail hay pass, để debug lỗi
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+
+      - name: Upload kernel image (nếu build thành công)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: towa-kernel
+          path: |
+            out/arch/arm64/boot/Image.gz-dtb
+            out/arch/arm64/boot/Image.gz
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/dts/qcom/towa.dtb
+          if-no-files-found: warn
