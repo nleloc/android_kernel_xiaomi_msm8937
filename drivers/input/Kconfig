@@ -230,5 +230,8 @@ source "drivers/input/gameport/Kconfig"
 
 endmenu
 
+source "drivers/input/cdfingerfp/Kconfig"
+source "drivers/input/sunwave/Kconfig"
+
 endmenu
 

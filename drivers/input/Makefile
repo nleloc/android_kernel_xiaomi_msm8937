@@ -36,3 +36,5 @@ obj-$(CONFIG_INPUT_KEYCOMBO)	+= keycombo.o
 obj-$(CONFIG_SMI130)   += sensors/smi130/
 
 obj-y	+= fingerprint/
+obj-$(CONFIG_CDFINGER_FP) += cdfingerfp/
+obj-$(CONFIG_INPUT_FINGERPRINT_SUNWAVE) += sunwave/

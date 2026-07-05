@@ -1491,4 +1491,14 @@ config TOUCHSCREEN_DOUBLETAP2WAKE
 	bool "DoubleTap2Wake for touchscreens"
 	default n
 
+source "drivers/input/touchscreen/focaltech_touch/Kconfig"
+
+config TOUCHSCREEN_NT36572_ZQL1818
+	bool "Novatek NT36572"
+	depends on I2C
+	help
+	  Say Y here if you have a Novatek NT36xxx touchscreen connected
+	  to your system.
+	  If unsure, say N.
+
 endif

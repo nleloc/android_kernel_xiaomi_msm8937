@@ -1,0 +1,9 @@
+menuconfig MACH_BQ
+	bool "BQ devices"
+if MACH_BQ
+config MACH_TOWA
+	bool "BQ Aquaris / Vsmart Joy 1+"
+	depends on ARCH_MSM8937
+	help
+	  Support for BQ towa (Vsmart Joy 1+).
+endif # MACH_BQ

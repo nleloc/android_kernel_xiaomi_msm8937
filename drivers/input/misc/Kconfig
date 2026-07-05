@@ -888,4 +888,9 @@ config INPUT_HISI_POWERKEY
 	  To compile this driver as a module, choose M here: the
 	  module will be called hisi_powerkey.
 
+config FINGERPRINT_CDFINGER_FINGER
+	tristate "CDFINGER_FINGER fingerprint drvier support"
+	help
+	  Say Y here to enable CDFINGER_FINGER fingerprint driver support!
+
 endif
