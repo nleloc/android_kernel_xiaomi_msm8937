@@ -24,7 +24,15 @@
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <linux/input/mt.h>
-#include <linux/wakelock.h>
+#include <linux/pm_wakeup.h>
+#include <linux/jiffies.h>
+#define WAKE_LOCK_SUSPEND 0
+struct wake_lock { struct wakeup_source *ws; };
+static inline void wake_lock_init(struct wake_lock *wl, int type, const char *name) { wl->ws = wakeup_source_register(name); }
+static inline void wake_lock(struct wake_lock *wl) { if (wl && wl->ws) __pm_stay_awake(wl->ws); }
+static inline void wake_unlock(struct wake_lock *wl) { if (wl && wl->ws) __pm_relax(wl->ws); }
+static inline void wake_lock_timeout(struct wake_lock *wl, unsigned long timeout_jiffies) { if (wl && wl->ws) __pm_wakeup_event(wl->ws, jiffies_to_msecs(timeout_jiffies)); }
+static inline void wake_lock_destroy(struct wake_lock *wl) { if (wl && wl->ws) wakeup_source_unregister(wl->ws); }
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 
@@ -1817,3 +1825,6 @@ module_exit(nvt_driver_exit);
 
 MODULE_DESCRIPTION("Novatek Touchscreen Driver");
 MODULE_LICENSE("GPL");
+
+// go ask Vsmart
+int hx_smwp_en_flag = 0;

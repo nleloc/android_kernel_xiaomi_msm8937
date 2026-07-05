@@ -22,6 +22,9 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <asoc/wcd934x_registers.h>
+#include <linux/gpio/driver.h>
+#include <linux/pinctrl/pinconf-generic.h>
+#include <linux/pinctrl/pinctrl.h>
 
 #include "core.h"
 #include "pinctrl-utils.h"

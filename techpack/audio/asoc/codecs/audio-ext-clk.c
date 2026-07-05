@@ -23,6 +23,7 @@
 #include <linux/of_gpio.h>
 #include <dt-bindings/clock/msm-clocks-8996.h>
 #include <dsp/q6afe-v2.h>
+#include <linux/io.h>
 #include "audio-ext-clk.h"
 
 #define clk_audio_lpass_mclk 0x575ec22b

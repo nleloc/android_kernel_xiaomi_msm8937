@@ -38,7 +38,7 @@ struct v4l2_mbus_framefmt {
 	__u16			reserved[11];
 };
 
-#ifndef __KERNEL__
+#if 1
 /*
  * enum v4l2_mbus_pixelcode and its definitions are now deprecated, and
  * MEDIA_BUS_FMT_ definitions (defined in media-bus-format.h) should be

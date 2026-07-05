@@ -32,6 +32,27 @@
 #include "cam_hw_ops.h"
 #include <media/msmb_generic_buf_mgr.h>
 
+/* Giả lập các hàm điều phối xung nhịp GPU của KGSL */
+void *kgsl_pwr_limits_add(enum kgsl_deviceid id) {
+    return NULL;
+}
+EXPORT_SYMBOL(kgsl_pwr_limits_add);
+
+int kgsl_pwr_limits_set_freq(void *limit, unsigned int freq) {
+    return 0;
+}
+EXPORT_SYMBOL(kgsl_pwr_limits_set_freq);
+
+void kgsl_pwr_limits_set_default(void *limit) {
+    /* Stub */
+}
+EXPORT_SYMBOL(kgsl_pwr_limits_set_default);
+
+void kgsl_pwr_limits_del(void *limit) {
+    /* Stub */
+}
+EXPORT_SYMBOL(kgsl_pwr_limits_del);
+
 static struct v4l2_device *msm_v4l2_dev;
 static struct list_head    ordered_sd_list;
 static struct mutex        ordered_sd_mtx;

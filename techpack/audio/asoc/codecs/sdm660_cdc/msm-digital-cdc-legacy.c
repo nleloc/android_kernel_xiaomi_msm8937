@@ -2516,7 +2516,7 @@ static int msm_dig_cdc_probe(struct platform_device *pdev)
 		goto err_supplies;
 	}
 	msm_dig_cdc->regmap =
-		devm_regmap_init_mmio_clk(&pdev->dev, NULL,
+		devm_regmap_init_mmio(&pdev->dev,
 			msm_dig_cdc->dig_base, &msm_digital_regmap_config);
 
 

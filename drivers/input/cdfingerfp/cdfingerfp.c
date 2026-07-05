@@ -16,7 +16,7 @@
 #include <linux/io.h>
 #include <linux/spinlock.h>
 #include <linux/sched.h>
-#include <linux/wakelock.h>
+
 #include <linux/kthread.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
@@ -41,6 +41,42 @@
 #include <linux/fb.h>
 #include <linux/notifier.h>
 #include <linux/mdss_io_util.h>
+
+#include <linux/pm_wakeup.h>
+#include <linux/jiffies.h>
+
+/* idk :'( */
+#define WAKE_LOCK_SUSPEND 0
+
+struct wake_lock {
+    struct wakeup_source *ws;
+};
+
+static inline void wake_lock_init(struct wake_lock *wl, int type, const char *name) {
+    wl->ws = wakeup_source_register(name);
+}
+
+static inline void wake_lock(struct wake_lock *wl) {
+    if (wl && wl->ws)
+        __pm_stay_awake(wl->ws);
+}
+
+static inline void wake_unlock(struct wake_lock *wl) {
+    if (wl && wl->ws)
+        __pm_relax(wl->ws);
+}
+
+static inline void wake_lock_timeout(struct wake_lock *wl, unsigned long timeout_jiffies) {
+    if (wl && wl->ws) {
+        unsigned int msecs = jiffies_to_msecs(timeout_jiffies);
+        __pm_wakeup_event(wl->ws, msecs);
+    }
+}
+
+static inline void wake_lock_destroy(struct wake_lock *wl) {
+    if (wl && wl->ws)
+        wakeup_source_unregister(wl->ws);
+}
 
 #define WAKELOCK_HOLD_TIME 1000 /* in ms */
 #define FP_UNLOCK_REJECTION_TIMEOUT (WAKELOCK_HOLD_TIME - 500)
@@ -171,7 +207,7 @@ static struct cdfinger_key_map maps[] = {
 
 static void notification_work(struct work_struct *work)
 {
-	mdss_prim_panel_fb_unblank(FP_UNLOCK_REJECTION_TIMEOUT);
+	//mdss_prim_panel_fb_unblank(FP_UNLOCK_REJECTION_TIMEOUT);
 	pr_debug("unblank\n");
 }
 

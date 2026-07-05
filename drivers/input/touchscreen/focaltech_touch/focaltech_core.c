@@ -53,7 +53,7 @@ static struct kobject *FTS_tp_device;
 
 static ssize_t gesture_store(struct device *dev, struct device_attribute *attr, const char *buff, size_t count)
 {
-	if((strnicmp(buff, "1", 1)  == 0))
+	if((strncasecmp(buff, "1", 1)  == 0))
 		focaltech_gesture_enable = 1;
 	else
 		focaltech_gesture_enable = 0;
@@ -1594,3 +1594,16 @@ module_exit(fts_ts_exit);
 MODULE_AUTHOR("FocalTech Driver Team");
 MODULE_DESCRIPTION("FocalTech Touchscreen Driver");
 MODULE_LICENSE("GPL v2");
+
+// go ask Vsmart
+// Giả lập các hàm telemetry bị thiếu của Vsmart với kiểu dữ liệu chuẩn
+int init_tp_fm_info(u16 version_info_num, char* version_info_str, char *name) {
+    // Stub rỗng để vượt qua Linker
+    return 0;
+}
+EXPORT_SYMBOL(init_tp_fm_info);
+
+void update_tp_fm_info(char *version_info_str) {
+    // Stub rỗng để vượt qua Linker
+}
+EXPORT_SYMBOL(update_tp_fm_info);

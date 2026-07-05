@@ -34,7 +34,15 @@
 *****************************************************************************/
 #include "../focaltech_core.h"
 #include "../focaltech_flash.h"
-#include <linux/wakelock.h>
+#include <linux/pm_wakeup.h>
+#include <linux/jiffies.h>
+#define WAKE_LOCK_SUSPEND 0
+struct wake_lock { struct wakeup_source *ws; };
+static inline void wake_lock_init(struct wake_lock *wl, int type, const char *name) { wl->ws = wakeup_source_register(name); }
+static inline void wake_lock(struct wake_lock *wl) { if (wl && wl->ws) __pm_stay_awake(wl->ws); }
+static inline void wake_unlock(struct wake_lock *wl) { if (wl && wl->ws) __pm_relax(wl->ws); }
+static inline void wake_lock_timeout(struct wake_lock *wl, unsigned long timeout_jiffies) { if (wl && wl->ws) __pm_wakeup_event(wl->ws, jiffies_to_msecs(timeout_jiffies)); }
+static inline void wake_lock_destroy(struct wake_lock *wl) { if (wl && wl->ws) wakeup_source_unregister(wl->ws); }
 #include <linux/timer.h>
 
 /*****************************************************************************

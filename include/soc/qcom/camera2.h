@@ -19,6 +19,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_device.h>
 #include <linux/of.h>
+#include <linux/v4l2-mediabus.h>
 
 #define MAX_SPECIAL_SUPPORT_SIZE 10
 
