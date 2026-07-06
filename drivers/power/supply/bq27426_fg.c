@@ -5,7 +5,6 @@
  * Copyright (C) 2008 Eurotech S.p.A. <info@eurotech.it>
  * Copyright (C) 2010-2011 Lars-Peter Clausen <lars@metafoo.de>
  * Copyright (C) 2011 Pali Rohár <pali.rohar@gmail.com>
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * Based on a previous work by Copyright (C) 2008 Texas Instruments, Inc.
  *
@@ -39,52 +38,56 @@
 #include <linux/interrupt.h>
 #include <linux/gpio/consumer.h>
 #include <linux/debugfs.h>
-#include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-adc.h>
-#include "bqfs_cmd_type.h"
-
-#ifdef CONFIG_MACH_XIAOMI
-#include <linux/xiaomi_device.h>
-extern int xiaomi_device_read(void);
-#include <linux/xiaomi_series.h>
-extern int xiaomi_series_read(void);
+#include <linux/alarmtimer.h>
+//#include "bqfs_cmd_type.h"
+//#include "bq27426_gmfs.h"
+//#include "bq27426_gmfs_coslight.h"
+#include <linux/power/bqfs_cmd_type.h>
+#include <linux/power/bq27426_gmfs_main_fenghua_ql1818_4000.h>
+#include <linux/power/bq27426_gmfs_second_atl_ql1818_4000.h>
+#include <linux/power/bq27426_gmfs_coslight_sunwoda_main_ql1668_4000.h>
+#include <linux/power/bq27426_gmfs_coslight_fh_second_ql1668_4000.h>
+#include <linux/power/bq27426_gmfs_coslight_fh_main_ql1667_3000.h>
+#ifdef CONFIG_GET_HARDWARE_INFO
+#include <asm/hardware_info.h>
 #endif
-
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-#include "bq27426_gmfs_scud_ulysse.h"
-#include "bq27426_gmfs_coslight_ulysse.h"
-#include "bq27426_gmfs_sunwoda_ulysse.h"
-#include "bq27426_gmfs_sdi_ulysse.h"
-#endif
-
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-#include "bq27426_gmfs_desay_riva.h"
-#include "bq27426_gmfs_scud_riva.h"
-#include "bq27426_gmfs_sunwoda_riva.h"
-#include "bq27426_gmfs_atl_riva.h"
-#include "bq27426_gmfs_default_riva.h"
-#endif
-
-#if 1
+#if 0
 #undef pr_debug
 #define pr_debug pr_err
 #undef pr_info
 #define pr_info pr_err
 #undef dev_dbg
 #define dev_dbg dev_err
-#else
-#undef pr_info
-#define pr_info pr_debug
 #endif
 
 #define	MONITOR_ALARM_CHECK_NS	5000000000
 #define	INVALID_REG_ADDR	0xFF
 #define BQFS_UPDATE_KEY		0x8F91
 
+#define FG_LOW_VOLT_SHUTDOWN_THRESHOLD		3
+#define FG_SHUTDOWN_VOLTAGE_THRESHOLD		3350
+#define FG_LOW_TMP_SHUTDOWN_VOLTAGE_THRESHOLD		3200
 
-#define	FG_FLAGS_OT				BIT(15)
-#define	FG_FLAGS_UT				BIT(14)
-#define	FG_FLAGS_FC				BIT(9)
+#define BATT_ID_47K				47
+#define BATT_ID_100K				100
+#define BATT_ID_PERCENTAGE			15
+#define BATT_ID_LOW(batt_id)			(batt_id * (100 - BATT_ID_PERCENTAGE) / 100)
+#define BATT_ID_HIGH(batt_id)			(batt_id * (100 + BATT_ID_PERCENTAGE) / 100)
+
+
+#define BATT_ID_SUNWODA_MAIN			1
+#define BATT_ID_FH_SECOND			1
+#define BATT_ID_FH_MAIN				2
+#define BATTERY_EMPTY_CAPACITY		0
+#define BATTERY_FULL_CAPACITY		100
+#define FG_CHARGE_VALTAGE_MAX		4400
+#define FG_CHARGE_CURRENT_MAX		1260 * 1000
+#define FG_CHARGE_COUNTER			1
+
+#define	FG_FLAGS_OT					BIT(15)
+#define	FG_FLAGS_UT					BIT(14)
+#define	FG_FLAGS_FC					BIT(9)
 #define	FG_FLAGS_CHG				BIT(8)
 #define	FG_FLAGS_OCVTAKEN			BIT(7)
 #define	FG_FLAGS_ITPOR				BIT(5)
@@ -109,26 +112,25 @@ enum bq_fg_reg_idx {
 	BQ_FG_REG_SOC,		/* Relative State of Charge */
 	BQ_FG_REG_SOH,		/* State of Health */
 	BQ_FG_REG_DC,		/* Design Capacity */
-	
+
 	NUM_REGS,
 };
 
 enum bq_fg_subcmd {
 	FG_SUBCMD_CTRL_STATUS	= 0x0000,
-	FG_SUBCMD_PART_NUM	= 0x0001,
-	FG_SUBCMD_FW_VER	= 0x0002,
-	FG_SUBCMD_DM_CODE	= 0x0004,
-	FG_SUBCMD_CHEM_ID	= 0x0008,
+	FG_SUBCMD_PART_NUM		= 0x0001,
+	FG_SUBCMD_FW_VER		= 0x0002,
+	FG_SUBCMD_DM_CODE		= 0x0004,
+	FG_SUBCMD_CHEM_ID		= 0x0008,
 	FG_SUBCMD_BAT_INSERT	= 0x000C,
 	FG_SUBCMD_BAT_REMOVE	= 0x000D,
 	FG_SUBCMD_SET_CFGUPDATE	= 0x0013,
-	FG_SUBCMD_SEAL		= 0x0020,
+	FG_SUBCMD_SEAL			= 0x0020,
 	FG_SUBCMD_PULSE_SOC_INT	= 0x0023,
-	FG_SUBCMD_CHEM_A	= 0x0030,
-	FG_SUBCMD_CHEM_B	= 0x0031,
-	FG_SUBCMD_CHEM_C	= 0x0032,
+	FG_SUBCMD_CHEM_A		= 0x0030,
+	FG_SUBCMD_CHEM_B		= 0x0031,
+	FG_SUBCMD_CHEM_C		= 0x0032,
 	FG_SUBCMD_SOFT_RESET	= 0x0042,
-	FG_SUBCMD_EXIT_CFGMODE	= 0x0043,
 };
 
 
@@ -150,6 +152,12 @@ enum {
 	UPDATE_REASON_FORCED,
 };
 
+struct fg_batt_profile {
+	const bqfs_cmd_t * bqfs_image;
+	u32				   array_size;
+	u8				   version;
+};
+
 struct batt_chem_id {
 	u16 id;
 	u16 cmd;
@@ -161,58 +169,27 @@ static struct batt_chem_id batt_chem_id_arr[] = {
 	{3142, FG_SUBCMD_CHEM_C},
 };
 
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-struct fg_batt_profile_ulysse {
-	const bqfs_cmd_t * bqfs_image_ulysse;
-	u32 array_size;
-	u8  version;
+static const struct fg_batt_profile bqfs_image[] = {
+	{ bqfs_main_fenghua_ql1818_4000, ARRAY_SIZE(bqfs_main_fenghua_ql1818_4000), 0x03 },
+	{ bqfs_second_atl_ql1818_4000, ARRAY_SIZE(bqfs_second_atl_ql1818_4000), 0x02 },
+	{ bqfs_coslight_sunwoda_main_ql1668_4000, ARRAY_SIZE(bqfs_coslight_sunwoda_main_ql1668_4000), 0x1F },
+	{ bqfs_coslight_fh_second_ql1668_4000, ARRAY_SIZE(bqfs_coslight_fh_second_ql1668_4000), 0x0A },
+	{ bqfs_coslight_fh_main_ql1667_3000, ARRAY_SIZE(bqfs_coslight_fh_main_ql1667_3000), 0x09 },
+	{ bqfs_coslight_fh_main_ql1667_3000, ARRAY_SIZE(bqfs_coslight_fh_main_ql1667_3000), 0x09 },
 };
 
-static const struct fg_batt_profile_ulysse bqfs_image_ulysse[] = {
-	{ bqfs_scud_ulysse, ARRAY_SIZE(bqfs_scud_ulysse), 0x10 },
-	{ bqfs_coslight_ulysse, ARRAY_SIZE(bqfs_coslight_ulysse), 0x10 },
-	{ bqfs_sunwoda_ulysse, ARRAY_SIZE(bqfs_sunwoda_ulysse), 0x10 },
-	{ bqfs_sdi_ulysse, ARRAY_SIZE(bqfs_sdi_ulysse), 0x10 },
-};
-#endif
+static char *batt_type_default = "UNKNOW";
+static char *batt_type[] = {"Fenghua_4000mAh", "ATL_4000mAh", "SUNWODA_4000mAh", "FH_4000mAh", "FH_3000mAh", "UNKNOW"};
 
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-struct riva_bq_batt_ids {
-	int kohm;
-	const char *battery_type;
-};
-
-static struct riva_bq_batt_ids riva_bq_batt_ids_attr[] = {
-	{30, "wingtech-Desay-4v4-3000mah"},
-	{68, "wingtech-Scud-4v4-3000mah"},
-	{330, "wingtech-Sunwoda-4v4-3000mah"},
-	{82, "wingtech-Atl-4v4-3000mah"},
-};
-
-struct fg_batt_profile_riva {
-	const bqfs_cmd_t *bqfs_image_riva;
-	u32				   array_size;
-	u8				   version;
-};
-
-static const struct fg_batt_profile_riva bqfs_image_riva[] = {
-	{ bqfs_default_riva, ARRAY_SIZE(bqfs_default_riva), 1},
-	{ bqfs_desay_riva, ARRAY_SIZE(bqfs_desay_riva), 33},
-	{ bqfs_scud_riva, ARRAY_SIZE(bqfs_scud_riva), 98},
-	{ bqfs_sunwoda_riva, ARRAY_SIZE(bqfs_sunwoda_riva), 61},
-	{ bqfs_atl_riva, ARRAY_SIZE(bqfs_atl_riva), 98},
-};
-#endif
-
-static const unsigned char *device2str[] = {
+const unsigned char *device2str[] = {
 	"bq27x00",
 	"bq27426",
 };
 
 const unsigned char *update_reason_str[] = {
-	"Reset", 
-	"New Version", 
-	"Force" 
+	"Reset",
+	"New Version",
+	"Force"
 };
 
 static u8 bq27426_regs[NUM_REGS] = {
@@ -233,6 +210,12 @@ static u8 bq27426_regs[NUM_REGS] = {
 
 struct bq_fg_chip;
 
+enum {
+	BATTERY_PROFILE_A,
+	BATTERY_PROFILE_B,
+	BATTERY_PROFILE_MAX,
+};
+
 struct bq_fg_chip {
 	struct device		*dev;
 	struct i2c_client	*client;
@@ -246,7 +229,7 @@ struct bq_fg_chip {
 	bool irq_waiting;
 	bool irq_disabled;
 	bool resume_completed;
-	
+
 	int	 force_update;
 	int	 fw_ver;
 	int	 df_ver;
@@ -256,7 +239,7 @@ struct bq_fg_chip {
 
 	int	 batt_id;
 
-	/* status tracking */	
+	/* status tracking */
 
 	bool batt_present;
 	bool batt_fc;
@@ -274,7 +257,7 @@ struct bq_fg_chip {
 	int	batt_soc;
 	int batt_fcc;	/* Full charge capacity */
 	int batt_rm;	/* Remaining capacity */
-	int	batt_dc;	/* Design Capacity */	
+	int	batt_dc;	/* Design Capacity */
 	int	batt_volt;
 	int	batt_temp;
 	int	batt_curr;
@@ -283,7 +266,7 @@ struct bq_fg_chip {
 
 
 	struct work_struct update_work;
-	
+
 	unsigned long last_update;
 
 	/* debug */
@@ -295,17 +278,18 @@ struct bq_fg_chip {
 
 	struct dentry *debug_root;
 
-	struct power_supply *fg_psy;
-	struct power_supply_desc fg_psy_d;
+	struct power_supply fg_psy;
 
 	struct qpnp_vadc_chip	*vadc_dev;
 	struct regulator		*vdd;
+	struct regulator		*vio;
 	u32	connected_rid;
-
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-	struct regulator		*riva_vcc_i2c;
-#endif
-	const char *battery_type;
+	bool low_voltage_3p25_flag;
+	u8 low_voltage_3p25_count;
+	int batt_seq;
+	char *batt_type;
+	int batt_id_vref;
+	int batt_id_rpull;
 };
 
 
@@ -321,7 +305,7 @@ static int __fg_read_byte(struct i2c_client *client, u8 reg, u8 *val)
 	}
 
 	*val = (u8)ret;
-	
+
 	return 0;
 }
 
@@ -331,7 +315,7 @@ static int __fg_write_byte(struct i2c_client *client, u8 reg, u8 val)
 
 	ret = i2c_smbus_write_byte_data(client, reg, val);
 	if (ret < 0) {
-		pr_err("i2c write byte fail: can't write 0x%02X to reg 0x%02X\n", 
+		pr_err("i2c write byte fail: can't write 0x%02X to reg 0x%02X\n",
 				val, reg);
 		return ret;
 	}
@@ -351,7 +335,7 @@ static int __fg_read_word(struct i2c_client *client, u8 reg, u16 *val)
 	}
 
 	*val = (u16)ret;
-	
+
 	return 0;
 }
 
@@ -362,7 +346,7 @@ static int __fg_write_word(struct i2c_client *client, u8 reg, u16 val)
 
 	ret = i2c_smbus_write_word_data(client, reg, val);
 	if (ret < 0) {
-		pr_err("i2c write word fail: can't write 0x%02X to reg 0x%02X\n", 
+		pr_err("i2c write word fail: can't write 0x%02X to reg 0x%02X\n",
 				val, reg);
 		return ret;
 	}
@@ -441,14 +425,14 @@ static int fg_read_byte(struct bq_fg_chip *bq, u8 reg, u8 *val)
 static int fg_write_byte(struct bq_fg_chip *bq, u8 reg, u8 val)
 {
 	int ret;
-	
-	if (bq->skip_writes) 
+
+	if (bq->skip_writes)
 		return 0;
 
 	mutex_lock(&bq->i2c_rw_lock);
 	ret = __fg_write_byte(bq->client, reg, val);
 	mutex_unlock(&bq->i2c_rw_lock);
-	
+
 	return ret;
 }
 
@@ -460,7 +444,7 @@ static int fg_read_word(struct bq_fg_chip *bq, u8 reg, u16 *val)
 		*val = 0;
 		return 0;
 	}
-	
+
 	mutex_lock(&bq->i2c_rw_lock);
 	ret = __fg_read_word(bq->client, reg, val);
 	mutex_unlock(&bq->i2c_rw_lock);
@@ -472,13 +456,13 @@ static int fg_write_word(struct bq_fg_chip *bq, u8 reg, u16 val)
 {
 	int ret;
 
-	if (bq->skip_writes) 
+	if (bq->skip_writes)
 		return 0;
 
 	mutex_lock(&bq->i2c_rw_lock);
 	ret = __fg_write_word(bq->client, reg, val);
 	mutex_unlock(&bq->i2c_rw_lock);
-	
+
 	return ret;
 }
 
@@ -491,9 +475,9 @@ static int fg_read_block(struct bq_fg_chip *bq, u8 reg, u8 *buf, u8 len)
 	mutex_lock(&bq->i2c_rw_lock);
 	ret = __fg_read_block(bq->client, reg, buf, len);
 	mutex_unlock(&bq->i2c_rw_lock);
-	
+
 	return ret;
-	
+
 }
 
 static int fg_write_block(struct bq_fg_chip *bq, u8 reg, u8 *data, u8 len)
@@ -502,7 +486,7 @@ static int fg_write_block(struct bq_fg_chip *bq, u8 reg, u8 *data, u8 len)
 
 	if (bq->skip_writes)
 		return 0;
-	
+
 	mutex_lock(&bq->i2c_rw_lock);
 	ret = __fg_write_block(bq->client, reg, data, len);
 	mutex_unlock(&bq->i2c_rw_lock);
@@ -510,10 +494,10 @@ static int fg_write_block(struct bq_fg_chip *bq, u8 reg, u8 *data, u8 len)
 	return ret;
 }
 
-#define	CTRL_REG				0x00
+#define	CTRL_REG					0x00
 
-#define	FG_DFT_UNSEAL_KEY1			0x80008000
-#define	FG_DFT_UNSEAL_KEY2			0x36724614
+#define	FG_DFT_UNSEAL_KEY1				0x80008000
+#define	FG_DFT_UNSEAL_KEY2				0x36724614
 
 #define	FG_DFT_UNSEAL_FA_KEY			0xFFFFFFFF
 
@@ -524,7 +508,7 @@ static u8 checksum(u8 *data, u8 len)
 
 	for (i = 0; i < len; i++)
 		sum += data[i];
-	
+
 	sum &= 0xFF;
 
 	return (0xFF - sum);
@@ -563,7 +547,7 @@ static int fg_check_init_completed(struct bq_fg_chip *bq)
 		pr_err("Failed to write control status cmd, ret = %d\n", ret);
 		return ret;
 	}
-	
+
 	msleep(5);
 
 	while (i++ < TIMEOUT_INIT_COMPLETED) {
@@ -586,7 +570,7 @@ static int fg_get_seal_state(struct bq_fg_chip *bq)
 		pr_err("Failed to write control status cmd, ret = %d\n", ret);
 		return ret;
 	}
-	
+
 	msleep(5);
 
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_CTRL], &status);
@@ -643,7 +627,7 @@ static int fg_unseal(struct bq_fg_chip *bq, u32 key)
 	return -1;
 }
 
-#if 0
+
 static int fg_unseal_fa(struct bq_fg_chip *bq, u32 key)
 {
 	int ret;
@@ -678,7 +662,6 @@ static int fg_unseal_fa(struct bq_fg_chip *bq, u32 key)
 	return -1;
 }
 EXPORT_SYMBOL_GPL(fg_unseal_fa);
-#endif
 
 static int fg_seal(struct bq_fg_chip *bq)
 {
@@ -740,6 +723,7 @@ static int fg_check_itpor(struct bq_fg_chip *bq)
 	return 0;
 }
 
+
 static int fg_read_dm_version(struct bq_fg_chip* bq, u8 *ver)
 {
 	int ret;
@@ -750,11 +734,11 @@ static int fg_read_dm_version(struct bq_fg_chip* bq, u8 *ver)
 		pr_err("Failed to write control status cmd, ret = %d\n", ret);
 		return ret;
 	}
-	
+
 	msleep(5);
 
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_CTRL], &dm_code);
-	if (!ret) 
+	if (!ret)
 		*ver = dm_code & 0xFF;
 	return ret;
 }
@@ -767,7 +751,7 @@ static int fg_dm_pre_access(struct bq_fg_chip *bq)
 
 	ret = fg_check_init_completed(bq);
 	if (ret < 0)
-		return ret; 
+		return ret;
 	ret = fg_unseal(bq, FG_DFT_UNSEAL_KEY1);
 	if (ret < 0)
 		return ret;
@@ -775,7 +759,7 @@ static int fg_dm_pre_access(struct bq_fg_chip *bq)
 	ret = fg_write_word(bq, bq->regs[BQ_FG_REG_CTRL], FG_SUBCMD_SET_CFGUPDATE);
 	if (ret < 0)
 		return ret;
-	
+
 	msleep(10);
 
 	while(i++ < CFG_UPDATE_POLLING_RETRY_LIMIT) {
@@ -801,7 +785,7 @@ static int fg_dm_post_access(struct bq_fg_chip *bq)
 						FG_SUBCMD_SOFT_RESET);
 	if (ret < 0)
 		return ret;
-	
+
 	msleep(100);
 
 	while(i++ < CFG_UPDATE_POLLING_RETRY_LIMIT) {
@@ -810,7 +794,7 @@ static int fg_dm_post_access(struct bq_fg_chip *bq)
 			break;
 		msleep(100);
 	}
-	
+
 	if (i == CFG_UPDATE_POLLING_RETRY_LIMIT) {
 		pr_err("Failed to exit cfgupdate mode\n");
 		return -1;
@@ -820,42 +804,6 @@ static int fg_dm_post_access(struct bq_fg_chip *bq)
 }
 EXPORT_SYMBOL_GPL(fg_dm_post_access);
 
-static int fg_dm_enter_cfg_mode(struct bq_fg_chip *bq)
-{
-		return fg_dm_pre_access(bq);
-}
-
-static int fg_dm_exit_cfg_mode(struct bq_fg_chip *bq)
-{
-	int ret;
-	int i = 0;
-
-
-	ret = fg_write_word(bq, bq->regs[BQ_FG_REG_CTRL],
-						FG_SUBCMD_EXIT_CFGMODE);
-	if (ret < 0)
-		return ret;
-	
-	msleep(100);
-
-	while(i++ < CFG_UPDATE_POLLING_RETRY_LIMIT) {
-		ret = fg_check_cfg_update_mode(bq);
-		if (!ret && !bq->cfg_update_mode)
-			break;
-		msleep(100);
-	}
-	
-	if (i == CFG_UPDATE_POLLING_RETRY_LIMIT) {
-		pr_err("Failed to exit cfgupdate mode\n");
-		return -1;
-	} else {
-		return fg_seal(bq);
-	}
-}
-EXPORT_SYMBOL_GPL(fg_dm_exit_cfg_mode);
-
-
-
 #define	DM_ACCESS_BLOCK_DATA_CHKSUM	0x60
 #define	DM_ACCESS_BLOCK_DATA_CTRL	0x61
 #define	DM_ACCESS_BLOCK_DATA_CLASS	0x3E
@@ -863,7 +811,7 @@ EXPORT_SYMBOL_GPL(fg_dm_exit_cfg_mode);
 #define	DM_ACCESS_BLOCK_DATA		0x40
 
 
-static int fg_dm_read_block(struct bq_fg_chip *bq, u8 classid, 
+static int fg_dm_read_block(struct bq_fg_chip *bq, u8 classid,
 							u8 offset, u8 *buf)
 {
 	int ret;
@@ -887,7 +835,7 @@ static int fg_dm_read_block(struct bq_fg_chip *bq, u8 classid,
 	ret = fg_read_block(bq, DM_ACCESS_BLOCK_DATA, buf, 32);
 	if (ret < 0)
 		return ret;
-	
+
 	fg_print_buf(__func__, buf, 32);
 
 	msleep(5);
@@ -923,9 +871,9 @@ static int fg_dm_write_block(struct bq_fg_chip *bq, u8 classid,
 		return ret;
 	ret = fg_write_block(bq, DM_ACCESS_BLOCK_DATA, data, 32);
 	msleep(5);
-	
+
 	fg_print_buf(__func__, data, 32);
-	
+
 	cksum = checksum(data, 32);
 	ret = fg_write_byte(bq, DM_ACCESS_BLOCK_DATA_CHKSUM, cksum);
 	if (ret < 0)
@@ -968,7 +916,7 @@ static int fg_read_fw_version(struct bq_fg_chip *bq)
 		pr_err("Failed to read firmware version:%d\n", ret);
 		return ret;
 	}
-	
+
 	return version;
 }
 
@@ -1002,7 +950,7 @@ static int fg_read_rsoc(struct bq_fg_chip *bq)
 {
 	int ret;
 	u16 soc = 0;
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_SOC], &soc);
 	if (ret < 0) {
 		pr_err("could not read RSOC, ret = %d\n", ret);
@@ -1017,7 +965,7 @@ static int fg_read_temperature(struct bq_fg_chip *bq)
 {
 	int ret;
 	u16 temp = 0;
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_TEMP], &temp);
 	if (ret < 0) {
 		pr_err("could not read temperature, ret = %d\n", ret);
@@ -1028,72 +976,11 @@ static int fg_read_temperature(struct bq_fg_chip *bq)
 
 }
 
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-#define RIVA_DEFAULT_RESISTER 45
-static int riva_fg_get_battid_resister(struct bq_fg_chip *bq)
-{
-	int rc = 0;
-	int bq_battid_resister = 0;
-	struct qpnp_vadc_result results;
-
-	rc = qpnp_vadc_read(bq->vadc_dev, P_MUX4_1_1, &results);
-	if (rc) {
-		pr_debug("Unable to read batt resister rc=%d\n", rc);
-		return RIVA_DEFAULT_RESISTER;
-	}
-
-	bq_battid_resister = (results.physical)*100/(1800000 - results.physical);
-
-	return bq_battid_resister;
-}
-
-
-static char *riva_bq_default_batt_type = "Generic_Battery";
-
-static int riva_bq_batterydata_get_best_profile(struct bq_fg_chip *bq)
-{
-	int delta = 0, best_id_kohm = 0, id_range_pct = 15,
-		batt_id_kohm = 0, i = 0,  limit = 0;
-
-	batt_id_kohm = riva_fg_get_battid_resister(bq);
-
-	for (i = 0; i < ARRAY_SIZE(riva_bq_batt_ids_attr); i++) {
-		delta = abs(riva_bq_batt_ids_attr[i].kohm - batt_id_kohm);
-		limit = (riva_bq_batt_ids_attr[i].kohm * id_range_pct) / 100;
-		if (delta <= limit) {
-			best_id_kohm = riva_bq_batt_ids_attr[i].kohm;
-			bq->battery_type = riva_bq_batt_ids_attr[i].battery_type;
-			goto out;
-		}
-	}
-
-	pr_err("out of range, using default battery, best_id_kohm=%d\n", batt_id_kohm);
-
-	bq->battery_type = riva_bq_default_batt_type;
-
-out:
-	pr_err("%s found\n", bq->battery_type);
-
-	if (best_id_kohm == 30) {
-		bq->batt_id = 1;
-	} else if (best_id_kohm == 68) {
-		bq->batt_id = 2;
-	} else if (best_id_kohm == 330) {
-		bq->batt_id = 3;
-	} else if (best_id_kohm == 82) {
-		bq->batt_id = 4;
-	} else
-		bq->batt_id = 0;
-
-	return 0;
-}
-#endif
-
 static int fg_read_volt(struct bq_fg_chip *bq)
 {
 	int ret;
 	u16 volt = 0;
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_VOLT], &volt);
 	if (ret < 0) {
 		pr_err("could not read voltage, ret = %d\n", ret);
@@ -1108,7 +995,7 @@ static int fg_read_current(struct bq_fg_chip *bq, int *curr)
 {
 	int ret;
 	u16 avg_curr = 0;
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_AI], &avg_curr);
 	if (ret < 0) {
 		pr_err("could not read current, ret = %d\n", ret);
@@ -1128,7 +1015,7 @@ static int fg_read_fcc(struct bq_fg_chip *bq)
 		pr_err("FCC command not supported!\n");
 		return 0;
 	}
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_FCC], &fcc);
 
 	if (ret < 0) {
@@ -1148,7 +1035,7 @@ static int fg_read_dc(struct bq_fg_chip *bq)
 		pr_err("DesignCapacity command not supported!\n");
 		return 0;
 	}
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_DC], &dc);
 
 	if (ret < 0) {
@@ -1169,7 +1056,7 @@ static int fg_read_rm(struct bq_fg_chip *bq)
 		pr_err("RemainingCapacity command not supported!\n");
 		return 0;
 	}
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_RM], &rm);
 
 	if (ret < 0) {
@@ -1190,7 +1077,7 @@ static int fg_read_cyclecount(struct bq_fg_chip *bq)
 		pr_err("Cycle Count not supported!\n");
 		return -1;
 	}
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_CC], &cc);
 
 	if (ret < 0) {
@@ -1210,7 +1097,7 @@ static int fg_read_tte(struct bq_fg_chip *bq)
 		pr_err("Time To Empty not supported!\n");
 		return -1;
 	}
-	
+
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_TTE], &tte);
 
 	if (ret < 0) {
@@ -1227,8 +1114,7 @@ static int fg_read_tte(struct bq_fg_chip *bq)
 static int fg_get_batt_status(struct bq_fg_chip *bq)
 {
 
-	if (bq->resume_completed)
-		fg_read_status(bq);
+	fg_read_status(bq);
 
 	if (!bq->batt_present)
 		return POWER_SUPPLY_STATUS_UNKNOWN;
@@ -1252,7 +1138,7 @@ static int fg_get_batt_capacity_level(struct bq_fg_chip *bq)
 		return POWER_SUPPLY_CAPACITY_LEVEL_FULL;
 	else if (bq->batt_soc1)
 		return POWER_SUPPLY_CAPACITY_LEVEL_LOW;
-	else if (bq->batt_socf)		
+	else if (bq->batt_socf)
 		return POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL;
 	else
 		return POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
@@ -1272,13 +1158,18 @@ static int fg_get_batt_health(struct bq_fg_chip *bq)
 		return POWER_SUPPLY_HEALTH_GOOD;
 
 }
+#if 0
+static void parse_dt(struct bq_fg_chip *bq)
+{
+
+}
+#endif
 
 static enum power_supply_property fg_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
-	POWER_SUPPLY_PROP_BATTERY_TYPE,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_TEMP,
@@ -1290,12 +1181,52 @@ static enum power_supply_property fg_props[] = {
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_RESISTANCE_ID,
 	POWER_SUPPLY_PROP_UPDATE_NOW,
+	POWER_SUPPLY_PROP_BATTERY_TYPE,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 };
+
+static int fg_get_batt_id(struct bq_fg_chip *bq)
+{
+	int rc = 0;
+	int64_t denom, batt_id_uv;
+	struct qpnp_vadc_result result;
+
+	/* read battery ID */
+	rc = qpnp_vadc_read(bq->vadc_dev, P_MUX4_1_1, &result);
+	if (rc) {
+		pr_err("error reading batt id channel = %d, rc = %d\n",
+					P_MUX4_1_1, rc);
+		return rc;
+	}
+
+	batt_id_uv = result.physical;
+
+	if (batt_id_uv == 0) {
+		/* vadc not correct or batt id line grounded, report 0 kohms */
+		pr_err("batt_id_uv = 0, batt-id grounded using same profile\n");
+		return 0;
+	}
+
+	denom = div64_s64(bq->batt_id_vref * 1000000LL, batt_id_uv) - 1000000LL;
+
+	if (denom == 0) {
+		/* batt id connector might be open, return 0 kohms */
+		pr_err("smb_parse_batt_id batt id connector might be open, return 0 kohms");
+		return 0;
+	}
+	bq->connected_rid = div64_s64(bq->batt_id_rpull * 1000000LL + denom/2, denom);
+	pr_debug("batt_id_voltage = %lld, connected_rid = %d\n",
+			batt_id_uv, bq->connected_rid);
+
+	return bq->connected_rid;
+}
 
 static int fg_get_property(struct power_supply *psy, enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	struct bq_fg_chip *bq = power_supply_get_drvdata(psy);
+	struct bq_fg_chip *bq = container_of(psy, struct bq_fg_chip, fg_psy);
 	int ret;
 
 	mutex_lock(&bq->update_lock);
@@ -1319,22 +1250,25 @@ static int fg_get_property(struct power_supply *psy, enum power_supply_property 
 		mutex_lock(&bq->data_lock);
 		fg_read_current(bq, &bq->batt_curr);
 		val->intval = -bq->batt_curr * 1000;
-		pr_info("bq27426 current=%d\n", val->intval);
+		//pr_info("bq27426 current=%d\n", val->intval);
 		mutex_unlock(&bq->data_lock);
 		break;
-	case POWER_SUPPLY_PROP_BATTERY_TYPE:
-		val->strval = bq->battery_type;
-		break;
+
 	case POWER_SUPPLY_PROP_CAPACITY:
-		if (bq->fake_soc >= 0) {
+		if ((bq->fake_soc >= BATTERY_EMPTY_CAPACITY) && (bq->fake_soc <= BATTERY_FULL_CAPACITY)) {
 			val->intval = bq->fake_soc;
 			break;
 		}
 		ret = fg_read_rsoc(bq);
 		mutex_lock(&bq->data_lock);
-		if (ret >= 0)
+		if ((ret >= BATTERY_EMPTY_CAPACITY) && (ret <= BATTERY_FULL_CAPACITY))
 			bq->batt_soc = ret;
-		val->intval = bq->batt_soc;
+		if (bq->low_voltage_3p25_flag) {
+			val->intval = 0;
+		} else {
+			val->intval = bq->batt_soc;
+		}
+
 		mutex_unlock(&bq->data_lock);
 		break;
 
@@ -1360,7 +1294,7 @@ static int fg_get_property(struct power_supply *psy, enum power_supply_property 
 		mutex_lock(&bq->data_lock);
 		if (ret >=0)
 			bq->batt_tte = ret;
-	
+
 		val->intval = bq->batt_tte;
 		mutex_unlock(&bq->data_lock);
 		break;
@@ -1401,12 +1335,23 @@ static int fg_get_property(struct power_supply *psy, enum power_supply_property 
 		break;
 
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
-		val->intval = bq->connected_rid ;
+		val->intval = fg_get_batt_id(bq);
 		break;
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
 		val->intval = 0;
 		break;
-
+	case POWER_SUPPLY_PROP_BATTERY_TYPE:
+		val->strval= bq->batt_type;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		val->intval= FG_CHARGE_VALTAGE_MAX;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		val->intval= FG_CHARGE_CURRENT_MAX;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		val->intval= FG_CHARGE_COUNTER;
+		break;
 	default:
 		mutex_unlock(&bq->update_lock);
 		return -EINVAL;
@@ -1420,15 +1365,15 @@ static int fg_set_property(struct power_supply *psy,
 				       enum power_supply_property prop,
 				       const union power_supply_propval *val)
 {
-	struct bq_fg_chip *bq = power_supply_get_drvdata(psy);
-
+	struct bq_fg_chip *bq = container_of(psy, struct bq_fg_chip,
+									fg_psy);
 	switch (prop) {
 	case POWER_SUPPLY_PROP_TEMP:
 		bq->fake_temp = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		bq->fake_soc = val->intval;
-		power_supply_changed(bq->fg_psy);
+		power_supply_changed(&bq->fg_psy);
 		break;
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
 		fg_dump_registers(bq);
@@ -1459,26 +1404,37 @@ static int fg_prop_is_writeable(struct power_supply *psy,
 	return ret;
 }
 
+
+
+static void fg_external_power_changed(struct power_supply *psy)
+{
+#if 0
+	struct bq_fg_chip *bq = container_of(psy, struct bq_fg_chip, fg_psy);
+
+	cancel_delayed_work(&bq->monitor_work);
+	schedule_delayed_work(&bq->monitor_work, 0);
+#endif
+
+}
+
 static int fg_psy_register(struct bq_fg_chip *bq)
 {
-	struct power_supply_config fg_psy_cfg = {};
+	int ret;
 
-	bq->fg_psy_d.name = "bms";
-	bq->fg_psy_d.type = POWER_SUPPLY_TYPE_BMS;
-	bq->fg_psy_d.properties = fg_props;
-	bq->fg_psy_d.num_properties = ARRAY_SIZE(fg_props);
-	bq->fg_psy_d.get_property = fg_get_property;
-	bq->fg_psy_d.set_property = fg_set_property;
-	bq->fg_psy_d.property_is_writeable = fg_prop_is_writeable;
+	bq->fg_psy.name = "bms";
+	bq->fg_psy.type = POWER_SUPPLY_TYPE_BMS;
+	bq->fg_psy.properties = fg_props;
+	bq->fg_psy.num_properties = ARRAY_SIZE(fg_props);
+	bq->fg_psy.get_property = fg_get_property;
+	bq->fg_psy.set_property = fg_set_property;
+	bq->fg_psy.external_power_changed = fg_external_power_changed;
+	bq->fg_psy.property_is_writeable = fg_prop_is_writeable;
 
-	fg_psy_cfg.drv_data = bq;
-	fg_psy_cfg.num_supplicants = 0;
-	bq->fg_psy = devm_power_supply_register(bq->dev,
-						&bq->fg_psy_d,
-						&fg_psy_cfg);
-	if (IS_ERR(bq->fg_psy)) {
-		pr_err("Failed to register fg_psy");
-		return PTR_ERR(bq->fg_psy);
+
+	ret = power_supply_register(bq->dev, &bq->fg_psy);
+	if (ret < 0) {
+		pr_err("Failed to register fg_psy:%d\n", ret);
+		return ret;
 	}
 
 	return 0;
@@ -1488,8 +1444,9 @@ static int fg_psy_register(struct bq_fg_chip *bq)
 static void fg_psy_unregister(struct bq_fg_chip *bq)
 {
 
-	power_supply_unregister(bq->fg_psy);
+	power_supply_unregister(&bq->fg_psy);
 }
+
 
 static int fg_change_chem_id(struct bq_fg_chip *bq, u16 new_id)
 {
@@ -1497,13 +1454,13 @@ static int fg_change_chem_id(struct bq_fg_chip *bq, u16 new_id)
 	u16 old_id;
 	//u16 subcmd_chem_id = 0;
 	int i;
-	
+
 	ret = fg_write_word(bq, bq->regs[BQ_FG_REG_CTRL], FG_SUBCMD_CHEM_ID);
 	if (ret < 0) {
 		pr_err("Failed to write chemid subcmd, ret = %d\n", ret);
 		return ret;
 	}
-	
+
 	msleep(5);
 
 	ret = fg_read_word(bq, bq->regs[BQ_FG_REG_CTRL], &old_id);
@@ -1518,7 +1475,7 @@ static int fg_change_chem_id(struct bq_fg_chip *bq, u16 new_id)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(batt_chem_id_arr); i++) {
-		if (new_id == batt_chem_id_arr[i].id) 
+		if (new_id == batt_chem_id_arr[i].id)
 			break;
 	}
 
@@ -1571,21 +1528,11 @@ static int fg_check_update_necessary(struct bq_fg_chip *bq)
 		return UPDATE_REASON_FG_RESET;
 
 	ret = fg_read_dm_version(bq, &dm_ver);
-
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-	if (xiaomi_series_read() == XIAOMI_SERIES_ULYSSE) {
-		if (!ret && dm_ver < bqfs_image_ulysse[bq->batt_id].version)
-			return UPDATE_REASON_NEW_VERSION;
-	}
-#endif
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-	if (xiaomi_device_read() == XIAOMI_DEVICE_RIVA) {
-		if (!ret && dm_ver < bqfs_image_riva[bq->batt_id].version)
-			return UPDATE_REASON_NEW_VERSION;
-	}
-#endif
-
-	return 0;
+	pr_info("[fg_read_dm_version] version = %d\n", dm_ver);
+	if (!ret && dm_ver != bqfs_image[bq->batt_id].version)
+		return UPDATE_REASON_NEW_VERSION;
+	else
+		return 0;
 }
 
 static bool fg_update_bqfs_execute_cmd(struct bq_fg_chip *bq,
@@ -1617,7 +1564,7 @@ static bool fg_update_bqfs_execute_cmd(struct bq_fg_chip *bq,
 			pr_info("CMD_C failed at line %d\n", cmd->line_num);
 			for(i = 0; i < cmd->data_len; i++) {
 				pr_err("Read: %02X, Cmp:%02X", tmp_buf[i], cmd->data.bytes[i]);
-			}	
+			}
 			return false;
 		}
 
@@ -1641,93 +1588,57 @@ static void fg_update_bqfs(struct bq_fg_chip *bq)
 	const bqfs_cmd_t *image;
 	int reason = 0;
 
-#ifdef CONFIG_MACH_XIAOMI
-	if (xiaomi_series_read() != XIAOMI_SERIES_ULYSSE && xiaomi_device_read() != XIAOMI_DEVICE_RIVA)
-		return;
-#endif
 
 	if (bq->force_update == ~BQFS_UPDATE_KEY)
 		reason = UPDATE_REASON_FORCED;
 	else
 		reason = fg_check_update_necessary(bq);
-	
+
 	if (!reason) {
 		pr_info("Fuel Gauge parameter no need update, ignored\n");
 		return;
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-    if (xiaomi_series_read() == XIAOMI_SERIES_ULYSSE) {
-		if (bq->batt_id >= ARRAY_SIZE(bqfs_image_ulysse) ||
-			bq->batt_id < 0) {
-			pr_err("batt_id is out of range");
-			return;
-		}
-    }
-#endif
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-    if (xiaomi_device_read() == XIAOMI_DEVICE_RIVA) {
-		if (bq->batt_id >= ARRAY_SIZE(bqfs_image_riva) ||
-			bq->batt_id < 0) {
-			pr_err("batt_id is out of range");
-			return;
-		}
-    }
-#endif
+	if (bq->batt_id >= ARRAY_SIZE(bqfs_image) ||
+		bq->batt_id < 0) {
+		pr_err("batt_id is out of range");
+		return;
+	}
 
 	/* TODO:if unseal, enter cfg update mode cmd sequence are in gmfs file,
 	   no need to do explicitly */
 	fg_dm_pre_access(bq);
 
+	pr_err("Fuel Gauge parameter update, reason:%s, version:%d, batt_id=%d Start...\n",
+			update_reason_str[reason - 1], bqfs_image[bq->batt_id].version, bq->batt_id);
+
 	mutex_lock(&bq->update_lock);
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-    if (xiaomi_series_read() == XIAOMI_SERIES_ULYSSE) {
-		pr_err("Fuel Gauge parameter update (ulysse), reason:%s, version:%d, batt_id=%d Start...\n", 
-				update_reason_str[reason - 1], bqfs_image_ulysse[bq->batt_id].version, bq->batt_id);
-		image = bqfs_image_ulysse[bq->batt_id].bqfs_image_ulysse;
-		for (i = 0; i < bqfs_image_ulysse[bq->batt_id].array_size; i++) {
-			if (!fg_update_bqfs_execute_cmd(bq, &image[i])) {
-				mutex_unlock(&bq->update_lock);
-				pr_err("Failed at command: %d\n", i);
-				fg_dm_post_access(bq);
-				return;
-			}
-			mdelay(5);
+	image = bqfs_image[bq->batt_id].bqfs_image;
+	for (i = 0; i < bqfs_image[bq->batt_id].array_size; i++) {
+		if (!fg_update_bqfs_execute_cmd(bq, &image[i])) {
+			mutex_unlock(&bq->update_lock);
+			pr_err("Failed at command: %d\n", i);
+			fg_dm_post_access(bq);
+			return;
 		}
+		mdelay(5);
 	}
-#endif
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-    if (xiaomi_device_read() == XIAOMI_DEVICE_RIVA) {
-		pr_err("Fuel Gauge parameter update (riva), reason:%s, version:%d, batt_id=%d Start...\n", 
-				update_reason_str[reason - 1], bqfs_image_riva[bq->batt_id].version, bq->batt_id);
-		image = bqfs_image_riva[bq->batt_id].bqfs_image_riva;
-		for (i = 0; i < bqfs_image_riva[bq->batt_id].array_size; i++) {
-			if (!fg_update_bqfs_execute_cmd(bq, &image[i])) {
-				mutex_unlock(&bq->update_lock);
-				pr_err("Failed at command: %d\n", i);
-				fg_dm_post_access(bq);
-				return;
-			}
-			mdelay(5);
-		}
-    }
-#endif
 	mutex_unlock(&bq->update_lock);
-	
+
 	pr_err("Done!\n");
-		
+
 	/* TODO:exit cfg update mode and seal device if these are not handled in gmfs file */
-	fg_dm_post_access(bq); 
+	fg_dm_post_access(bq);
 	return;
 
 }
 EXPORT_SYMBOL_GPL(fg_update_bqfs);
 
 static const u8 fg_dump_regs[] = {
-	0x00, 0x02, 0x04, 0x06, 
-	0x08, 0x0A, 0x0C, 0x0E, 
+	0x00, 0x02, 0x04, 0x06,
+	0x08, 0x0A, 0x0C, 0x0E,
 	0x10, 0x16, 0x18, 0x1A,
-	0x1C, 0x1E, 0x20, 0x28, 
+	0x1C, 0x1E, 0x20, 0x28,
 	0x2A, 0x2C, 0x2E, 0x30,
 	0x66, 0x68, 0x6C, 0x6E,
 	0x70,
@@ -1739,22 +1650,22 @@ static int show_registers(struct seq_file *m, void *data)
 	int i;
 	int ret;
 	u16 val = 0;
-	
+
 	for (i = 0; i < ARRAY_SIZE(fg_dump_regs); i++) {
 		msleep(5);
 		ret = fg_read_word(bq, fg_dump_regs[i], &val);
 		if (!ret)
-			seq_printf(m, "Reg[%02X] = 0x%04X\n", 
+			seq_printf(m, "Reg[%02X] = 0x%04X\n",
 						fg_dump_regs[i], val);
 	}
-	return 0;	
+	return 0;
 }
 
 
 static int reg_debugfs_open(struct inode *inode, struct file *file)
 {
 	struct bq_fg_chip *bq = inode->i_private;
-	
+
 	return single_open(file, show_registers, bq);
 }
 
@@ -1771,9 +1682,9 @@ static void create_debugfs_entry(struct bq_fg_chip *bq)
 	bq->debug_root = debugfs_create_dir("bq_fg", NULL);
 	if (!bq->debug_root)
 		pr_err("Failed to create debug dir\n");
-	
+
 	if (bq->debug_root) {
-		
+
 		debugfs_create_file("registers", S_IFREG | S_IRUGO,
 						bq->debug_root, bq, &reg_debugfs_ops);
 
@@ -1786,7 +1697,7 @@ static void create_debugfs_entry(struct bq_fg_chip *bq)
 					  S_IFREG | S_IWUSR | S_IRUGO,
 					  bq->debug_root,
 					  &(bq->fake_temp));
-	
+
 		debugfs_create_x32("skip_reads",
 					  S_IFREG | S_IWUSR | S_IRUGO,
 					  bq->debug_root,
@@ -1795,75 +1706,90 @@ static void create_debugfs_entry(struct bq_fg_chip *bq)
 					  S_IFREG | S_IWUSR | S_IRUGO,
 					  bq->debug_root,
 					  &(bq->skip_writes));
-	}	
+	}
 }
 
-static ssize_t fg_attr_show_qmax_ratable(struct device *dev,
+static ssize_t fg_attr_show_Ra_table(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct bq_fg_chip *bq = i2c_get_clientdata(client);
 
 	int ret;
-	u8 rd_buf[512];
-	int len;
-	int idx = 0;
-	int i;
+	u8 rd_buf[64];
+	u8 temp_buf[100];
+	int len, i, idx;
+	u8 *err_str[] = {
+		"Failed to enter configure mode",
+		"Failed to Read Ra Table",
+		"Failed to exit configure mode",
+	};
 
+	memset(buf, 0, 64);
 	mutex_lock(&bq->update_lock);
 	ret = fg_dm_pre_access(bq);
 	if (ret) {
+		sprintf(buf,"%s", err_str[0]);
 		mutex_unlock(&bq->update_lock);
-		return 0;
+		return strlen(err_str[0]);
+	}
+
+	ret = fg_dm_read_block(bq, 89, 0, rd_buf);	//Ra Table
+	if (ret) {
+		sprintf(buf,"%s", err_str[1]);
+		fg_dm_post_access(bq);
+		mutex_unlock(&bq->update_lock);
+		return strlen(err_str[1]);
+	}
+
+	fg_dm_post_access(bq);
+
+	idx = 0;
+	for (i = 0; i < 30; i++) {
+		len = sprintf(temp_buf, "%02X ", rd_buf[i]);
+		memcpy(&buf[idx], temp_buf, len);
+		idx += len;
+	}
+	mutex_unlock(&bq->update_lock);
+	return idx;
+}
+
+static ssize_t fg_attr_show_Qmax(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct bq_fg_chip *bq = i2c_get_clientdata(client);
+
+	int ret;
+	u8 rd_buf[64];
+	int len;
+	u8 *err_str[] = {
+		"Failed to enter configure mode",
+		"Failed to Qmax",
+	};
+
+	memset(buf, 0, 64);
+	mutex_lock(&bq->update_lock);
+	ret = fg_dm_pre_access(bq);
+	if (ret) {
+		sprintf(buf,"%s", err_str[0]);
+		mutex_unlock(&bq->update_lock);
+		return strlen(err_str[0]);
 	}
 
 	ret = fg_dm_read_block(bq, 82, 0, rd_buf);	//Qmax, offset 0
 	if (ret) {
+		sprintf(buf,"%s", err_str[1]);
 		fg_dm_post_access(bq);
 		mutex_unlock(&bq->update_lock);
-		return 0;
-	}
-	
-	len = sprintf(&buf[idx], "Qmax Cell 0: %d\n", (rd_buf[0] << 8) | rd_buf[1]);
-	idx += len;
-	len = sprintf(&buf[idx], "Avg I Last Run: %d\n", (short)(rd_buf[25] << 8 | rd_buf[26]));
-	idx += len;
-	len = sprintf(&buf[idx], "Avg P Last Run:%d\n", (short)(rd_buf[27] << 8 | rd_buf[28]));
-	idx += len;
-	len = sprintf(&buf[idx], "Delta Voltage:%d\n", (rd_buf[29] << 8 | rd_buf[30]));
-	idx += len;
-
-	ret = fg_dm_read_block(bq, 89, 0, rd_buf);	//Ra Table
-	if (ret) {
-		fg_dm_post_access(bq);
-		mutex_unlock(&bq->update_lock);
-		return idx;
+		return strlen(err_str[1]);
 	}
 
-	len = sprintf(&buf[idx], "Ra Table:\n");
-	idx += len;
-
-	for (i = 0; i < 15; i += 2) {
-		len = sprintf(&buf[idx], "%d ", rd_buf[i] << 8 | rd_buf[i+1]);
-		idx += len;
-	}
-
-
-	ret = fg_dm_read_block(bq, 109, 6, rd_buf);	//V at Chg Term
-	if (ret) {
-		fg_dm_post_access(bq);
-		mutex_unlock(&bq->update_lock);
-		return idx;
-	}
-
-	len = sprintf(&buf[idx], "V at Chg Term:%d\n", rd_buf[6] << 8 | rd_buf[7]);
-	idx += len;
-
+	len = sprintf(buf, "Qmax Cell 0 = %d\n", (rd_buf[0] << 8) | rd_buf[1]);
 	fg_dm_post_access(bq);
 
 	mutex_unlock(&bq->update_lock);
-
-	return idx;
+	return len;
 }
 
 static ssize_t fg_attr_store_update(struct device *dev,
@@ -1879,7 +1805,7 @@ static ssize_t fg_attr_store_update(struct device *dev,
 		bq->force_update = ~key;
 		schedule_work(&bq->update_work);
 	}
-	return count;	
+	return count;
 }
 
 static ssize_t fg_attr_show_dmcode(struct device *dev,
@@ -1887,25 +1813,27 @@ static ssize_t fg_attr_show_dmcode(struct device *dev,
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct bq_fg_chip *bq = i2c_get_clientdata(client);
-	
+
 	int ret;
 	u8 ver;
-	
+
 	ret = fg_read_dm_version(bq, &ver);
 	if (!ret)
 		return sprintf(buf, "0x%02X\n", ver);
 	else
 		return sprintf(buf, "Read DM code error");
 }
-	
 
 
-static DEVICE_ATTR(qmax_ratable, S_IRUGO, fg_attr_show_qmax_ratable, NULL);
+
+static DEVICE_ATTR(RaTable, S_IRUGO, fg_attr_show_Ra_table, NULL);
+static DEVICE_ATTR(Qmax, S_IRUGO, fg_attr_show_Qmax, NULL);
 static DEVICE_ATTR(update, S_IWUSR, NULL, fg_attr_store_update);
 static DEVICE_ATTR(dmcode, S_IRUGO, fg_attr_show_dmcode, NULL);
 
 static struct attribute *fg_attributes[] = {
-	&dev_attr_qmax_ratable.attr,
+	&dev_attr_RaTable.attr,
+	&dev_attr_Qmax.attr,
 	&dev_attr_update.attr,
 	&dev_attr_dmcode.attr,
 	NULL,
@@ -1915,56 +1843,16 @@ static const struct attribute_group fg_attr_group = {
 	.attrs = fg_attributes,
 };
 
-
-
-static int fg_enable_sleep(struct bq_fg_chip *bq, bool enable)
-{
-
-	int ret;
-	u8 rd_buf[64];
-
-	memset(rd_buf, 0, 64);
-	mutex_lock(&bq->update_lock);
-	ret = fg_dm_enter_cfg_mode(bq);
-	if (ret) {
-		mutex_unlock(&bq->update_lock);
-		return ret;
-	}
-
-	ret = fg_dm_read_block(bq, 64, 0, rd_buf);	//OpConfig
-	if (ret) {
-		fg_dm_exit_cfg_mode(bq);
-		mutex_unlock(&bq->update_lock);
-		return ret;
-	}
-
-	if (enable)
-		rd_buf[1] |=0x20;	// set SLEEP bit
-	else
-		rd_buf[1] &=~0x20;	// clear SLEEP bit
-	
-	
-	ret = fg_dm_write_block(bq, 64, 0, rd_buf);
-	
-	fg_dm_exit_cfg_mode(bq);
-
-	mutex_unlock(&bq->update_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(fg_enable_sleep);
-
 static void fg_update_bqfs_workfunc(struct work_struct *work)
 {
-		struct bq_fg_chip *bq = container_of(work, 
+		struct bq_fg_chip *bq = container_of(work,
 							struct bq_fg_chip, update_work);
-	
+
 		fg_update_bqfs(bq);
 }
 
 static void fg_dump_registers(struct bq_fg_chip *bq)
 {
-/*
 	int i;
 	int ret;
 	u16 val;
@@ -1973,9 +1861,32 @@ static void fg_dump_registers(struct bq_fg_chip *bq)
 		msleep(5);
 		ret = fg_read_word(bq, fg_dump_regs[i], &val);
 		if (!ret)
-			pr_err("Reg[%02X] = 0x%04X\n", fg_dump_regs[i], val);
+			pr_info("Reg[%02X] = 0x%04X\n", fg_dump_regs[i], val);
 	}
-*/
+}
+
+static void fg_low_volt_shutdown(struct bq_fg_chip *bq)
+{
+	if ((bq->batt_temp - 2730) < 0)
+	{
+		if (bq->batt_volt <= FG_LOW_TMP_SHUTDOWN_VOLTAGE_THRESHOLD)
+		{
+			bq->low_voltage_3p25_flag = true;
+			pr_err("Low Temperature Voltage less than 3.0V, Set SOC is 0,"
+				" Notify shutdown!!\n");
+		}
+		return;
+	}
+
+	(bq->batt_volt <= FG_SHUTDOWN_VOLTAGE_THRESHOLD) ? \
+		(bq->low_voltage_3p25_count++) : (bq->low_voltage_3p25_count = 0);
+	if (bq->low_voltage_3p25_count >= FG_LOW_VOLT_SHUTDOWN_THRESHOLD)
+	{
+		bq->low_voltage_3p25_flag = true;
+		bq->low_voltage_3p25_count = 0;
+		pr_err("Current Voltage less than 3.25V, Set SOC = %d,"
+				" Notify shutdown!!\n", bq->batt_soc);
+	}
 }
 
 static irqreturn_t fg_irq_thread(int irq, void *dev_id)
@@ -2002,11 +1913,9 @@ static irqreturn_t fg_irq_thread(int irq, void *dev_id)
 	fg_read_status(bq);
 	mutex_unlock(&bq->update_lock);
 
-	fg_dump_registers(bq);
-
-	pr_info("itpor=%d, cfg_mode = %d, seal_state=%d, batt_present=%d", 
+	pr_debug("itpor=%d, cfg_mode = %d, seal_state=%d, batt_present=%d",
 			bq->itpor, bq->cfg_update_mode, bq->seal_state, bq->batt_present);
-	
+
 	if (!last_batt_present && bq->batt_present ) {/* battery inserted */
 		pr_info("Battery inserted\n");
 	} else if (last_batt_present && !bq->batt_present) {/* battery removed */
@@ -2018,23 +1927,25 @@ static irqreturn_t fg_irq_thread(int irq, void *dev_id)
 		bq->batt_curr	= -ENODATA;
 		bq->batt_temp	= -ENODATA;
 		bq->batt_cyclecnt = -ENODATA;
+		bq->batt_type = batt_type_default;
 	}
-	
+
 	if (bq->batt_present) {
 		mutex_lock(&bq->update_lock);
-		
+
 		bq->batt_soc = fg_read_rsoc(bq);
 		bq->batt_volt = fg_read_volt(bq);
 		fg_read_current(bq, &bq->batt_curr);
 		bq->batt_temp = fg_read_temperature(bq);
 		bq->batt_rm = fg_read_rm(bq);
+		fg_low_volt_shutdown(bq);
 
 		mutex_unlock(&bq->update_lock);
-		pr_err("RSOC:%d, Volt:%d, Current:%d, Temperature:%d, connected_rid = %d\n",
-			bq->batt_soc, bq->batt_volt, bq->batt_curr, bq->batt_temp - 2730, bq->connected_rid);
+		pr_info("FSOC:%d, DSOC:%d, RSOC:%d, Volt:%d, Current:%d, Temperature:%d, connected_rid = %d\n",
+			bq->batt_fcc, bq->batt_dc, bq->batt_soc, bq->batt_volt, -bq->batt_curr, bq->batt_temp - 2730, bq->connected_rid);
 	}
 
-	power_supply_changed(bq->fg_psy);
+	power_supply_changed(&bq->fg_psy);
 	mutex_unlock(&bq->irq_complete);
 
 	return IRQ_HANDLED;
@@ -2048,29 +1959,72 @@ static void determine_initial_status(struct bq_fg_chip *bq)
 
 static void convert_rid2battid(struct bq_fg_chip *bq)
 {
-#ifdef CONFIG_MACH_XIAOMI_ULYSSE
-    if (xiaomi_series_read() == XIAOMI_SERIES_ULYSSE) {
-		if (bq->connected_rid > 400 && bq->connected_rid < 600) {
-			bq->batt_id = 3;
-		} else if (bq->connected_rid > 220 && bq->connected_rid < 385) {
-			bq->batt_id = 2;
-		} else if (bq->connected_rid > 60 && bq->connected_rid < 140) {
-			bq->batt_id = 1;
-		} else if (bq->connected_rid > 10 && bq->connected_rid < 50) {
-			bq->batt_id = 0;
-		} else {
-			bq->batt_id = 1;
-		}
-		return;
-    }
-#endif
+	if (bq->connected_rid > BATT_ID_LOW(BATT_ID_47K) &&
+		bq->connected_rid < BATT_ID_HIGH(BATT_ID_47K)) {
+		bq->batt_id = 0;
+	} else if (bq->connected_rid > BATT_ID_LOW(BATT_ID_100K) &&
+		bq->connected_rid < BATT_ID_HIGH(BATT_ID_100K)) {
+		bq->batt_id = 1;
+	} else { //default coslight
+		bq->batt_id = 0;
+	}
 
-	bq->batt_id = 0;
+	bq->batt_type = batt_type[bq->batt_id];
+
+	pr_err("Default profile sequence is %d, battery id is %d, battery type is %s\n",
+		bq->batt_seq, bq->batt_id, bq->batt_type);
 }
-
 
 #define SMB_VTG_MIN_UV		1800000
 #define SMB_VTG_MAX_UV		1800000
+#if 0
+static int fg_get_battery_type(struct bq_fg_chip *bq)
+{
+    int ret = 0;
+
+    ret = gpio_request(bq->batt_id, "batt-id");
+	if (ret < 0)
+		return -1;
+
+	switch (gpio_get_value(bq->batt_id))
+	{
+        case 0x0:
+        break;
+        case 0x1:
+        break;
+        case 0x3:
+        default:
+        break;
+	}
+
+    //gpio_free(batt_id_gpio);
+
+	return ret;
+}
+#endif
+
+static int bq_parse_dt(struct bq_fg_chip *bq)
+{
+	int rc = 0;
+	struct device_node *node = bq->dev->of_node;
+
+	rc = of_property_read_u32(node, "ti,ql1668-batt-fs-seq-sunwoda-main", &bq->batt_seq);
+	if (rc < 0) {
+		pr_err("Couldn't read ql1668-batt-fs-seq-sunwoda-main rc=%d\n", rc);
+	}
+
+	rc = of_property_read_u32(node, "ti,ql1667-batt-fs-seq-fh-main", &bq->batt_seq);
+	if (rc < 0) {
+		pr_err("Couldn't read ql1667-batt-fs-seq-fh-main rc=%d\n", rc);
+	}
+
+	if (!bq->batt_seq){
+		return 0;
+	}
+
+	return bq->batt_seq;
+}
+
 static int fg_parse_batt_id(struct bq_fg_chip *bq)
 {
 	int rc = 0, rpull = 0, vref = 0;
@@ -2078,10 +2032,11 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 	struct device_node *node = bq->dev->of_node;
 	struct qpnp_vadc_result result;
 
+
 	bq->vdd = regulator_get(bq->dev, "vdd");
 	if (IS_ERR(bq->vdd)) {
 		pr_err("Regulator get failed vdd rc=%d\n", rc);
-		//return rc;
+		return rc;
 	}
 
 	if (regulator_count_voltages(bq->vdd) > 0) {
@@ -2097,6 +2052,27 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 		pr_err("Regulator vdd enable failed rc=%d\n", rc);
 	}
 
+	bq->vio = regulator_get(bq->dev, "vio");
+	if (IS_ERR(bq->vio)) {
+		pr_err("Regulator get failed vio rc=%d\n", rc);
+		return rc;
+	}
+
+	if (regulator_count_voltages(bq->vio) > 0) {
+		rc = regulator_set_voltage(bq->vio, SMB_VTG_MIN_UV,
+					   SMB_VTG_MAX_UV);
+		if (rc) {
+			pr_err("Regulator set_vtg failed vio rc=%d\n", rc);
+		}
+	}
+
+	rc = regulator_enable(bq->vio);
+	if (rc) {
+		pr_err("Regulator vio enable failed rc=%d\n", rc);
+	}
+	if (!bq_parse_dt(bq)) {
+		pr_err("Unable to parse battery data\n");
+	}
 	rc = of_property_read_u32(node, "ti,batt-id-vref-uv", &vref);
 	if (rc < 0) {
 		pr_err("Couldn't read batt-id-vref-uv rc=%d\n", rc);
@@ -2109,18 +2085,18 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 		pr_err("Couldn't read batt-id-rpullup-kohm rc=%d\n", rc);
 		return rc;
 	}
+
 	pr_err("fg_parse_batt_id begin read battery ID \n");
 	/* read battery ID */
-	rc = qpnp_vadc_read(bq->vadc_dev, P_MUX2_1_1, &result);
+	rc = qpnp_vadc_read(bq->vadc_dev, P_MUX4_1_1, &result);
 	if (rc) {
 		pr_err("error reading batt id channel = %d, rc = %d\n",
-					LR_MUX2_BAT_ID, rc);
-		return rc; 
+					P_MUX4_1_1, rc);
+		return rc;
 	}
 
-	
 	batt_id_uv = result.physical;
-	
+
 
 	pr_err("fg_parse_batt_id  batt_id_uv = %lld\n",batt_id_uv);
 
@@ -2132,7 +2108,7 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 
 	denom = div64_s64(vref * 1000000LL, batt_id_uv) - 1000000LL;
 
-	
+
 	pr_err("fg_parse_batt_id  denom = %lld,rpull=%d\n",denom,rpull);
 	if (denom == 0) {
 		/* batt id connector might be open, return 0 kohms */
@@ -2140,6 +2116,8 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 		return 0;
 	}
 	bq->connected_rid = div64_s64(rpull * 1000000LL + denom/2, denom);
+	bq->batt_id_vref = vref;
+	bq->batt_id_rpull = rpull;
 	pr_err("batt_id_voltage = %lld, connected_rid = %d\n",
 			batt_id_uv, bq->connected_rid);
 
@@ -2148,19 +2126,14 @@ static int fg_parse_batt_id(struct bq_fg_chip *bq)
 	return 0;
 }
 
-static int bq_parse_dt(struct bq_fg_chip *bq)
-{
-	return 0;
-}
-
-static int bq_fg_probe(struct i2c_client *client, 
-				const struct i2c_device_id *id)
+static int bq_fg_probe(struct i2c_client *client,
+							const struct i2c_device_id *id)
 {
 
 	int ret;
 	struct bq_fg_chip *bq;
 	u8 *regs;
-
+    pr_err("^^^^^^bq fg probe^^^^^^^^^^^^");
 	bq = devm_kzalloc(&client->dev, sizeof(*bq), GFP_KERNEL);
 
 	if (!bq) {
@@ -2181,20 +2154,21 @@ static int bq_fg_probe(struct i2c_client *client,
 	bq->batt_curr	= -ENODATA;
 	bq->batt_cyclecnt = -ENODATA;
 
-	bq->connected_rid = 0;
-
 	bq->fake_soc 	= -EINVAL;
 	bq->fake_temp	= -EINVAL;
-
-	bq->battery_type = "Unknown";
+	bq->low_voltage_3p25_count = 0;
+	bq->low_voltage_3p25_flag = false;
+	bq->batt_seq = 0;
+	bq->batt_id = 3;
+	bq->batt_type = batt_type_default;
 
 	if (bq->chip == BQ27426) {
-		regs = bq27426_regs; 
+		regs = bq27426_regs;
 	} else {
 		pr_err("unexpected fuel gauge: %d\n", bq->chip);
 		regs = bq27426_regs;
 	}
-	
+
 	memcpy(bq->regs, regs, NUM_REGS);
 
 	i2c_set_clientdata(client, bq);
@@ -2207,11 +2181,6 @@ static int bq_fg_probe(struct i2c_client *client,
 	bq->resume_completed = true;
 	bq->irq_waiting = false;
 
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-	if (xiaomi_device_read() == XIAOMI_DEVICE_RIVA)
-		bq->vadc_dev = qpnp_get_vadc(bq->dev, "battid");
-	else
-#endif
 	bq->vadc_dev = qpnp_get_vadc(bq->dev, "batt_id");
 	if (IS_ERR(bq->vadc_dev)) {
 		ret = PTR_ERR(bq->vadc_dev);
@@ -2222,47 +2191,15 @@ static int bq_fg_probe(struct i2c_client *client,
 
 		return ret;
 	}
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-	if (xiaomi_device_read() == XIAOMI_DEVICE_RIVA) {
-		bq->riva_vcc_i2c = regulator_get(bq->dev, "riva_vcc_i2c");
-		if (IS_ERR(bq->riva_vcc_i2c)) {
-			pr_err("Regulator get failed vdd ret=%d\n", ret);
 
-		}
-
-		if (regulator_count_voltages(bq->riva_vcc_i2c) > 0) {
-			ret = regulator_set_voltage(bq->riva_vcc_i2c, SMB_VTG_MIN_UV,
-						SMB_VTG_MAX_UV);
-			if (ret) {
-				pr_err("Regulator set_vtg failed vdd ret=%d\n", ret);
-			}
-		}
-
-		ret = regulator_enable(bq->riva_vcc_i2c);
-		if (ret) {
-			pr_err("Regulator vdd enable failed ret=%d\n", ret);
-		}
-		ret = riva_bq_batterydata_get_best_profile(bq);
-	}
-	else
-#endif
-	ret = bq_parse_dt(bq);
-	if (ret < 0) {
-		dev_err(&client->dev, "Unable to parse DT nodes\n");
-		//goto destroy_mutex;
-	}
 	INIT_WORK(&bq->update_work, fg_update_bqfs_workfunc);
 
-#ifdef CONFIG_MACH_XIAOMI_ROVA
-	if (xiaomi_device_read() != XIAOMI_DEVICE_RIVA)
-#endif
 	fg_parse_batt_id(bq);
 
 	fg_update_bqfs(bq);
-
 	if (client->irq) {
 		ret = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-			fg_irq_thread, 
+			fg_irq_thread,
 			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 			"bq fuel gauge irq", bq);
 		if (ret < 0) {
@@ -2271,7 +2208,7 @@ static int bq_fg_probe(struct i2c_client *client,
 		}
 		enable_irq_wake(client->irq);
 	}
-	
+
 	device_init_wakeup(bq->dev, 1);
 
 	bq->fw_ver = fg_read_fw_version(bq);
@@ -2285,8 +2222,11 @@ static int bq_fg_probe(struct i2c_client *client,
 	}
 
 	determine_initial_status(bq);
+#ifdef CONFIG_GET_HARDWARE_INFO
+	register_hardware_info(BATTERY, (char *)batt_type[bq->batt_id]);
+#endif
 
-	pr_err("bq fuel gauge probe successfully, %s FW ver:%d\n", 
+	pr_err("bq fuel gauge probe successfully, %s FW ver:%d\n",
 			device2str[bq->chip], bq->fw_ver);
 
 	return 0;
@@ -2345,7 +2285,7 @@ static int bq_fg_resume(struct device *dev)
 		mutex_unlock(&bq->irq_complete);
 	}
 
-	power_supply_changed(bq->fg_psy);
+	power_supply_changed(&bq->fg_psy);
 
 	return 0;
 
@@ -2401,11 +2341,11 @@ static struct i2c_driver bq_fg_driver = {
 		.pm		= &bq_fg_pm_ops,
 	},
 	.id_table	= bq_fg_id,
-	
+
 	.probe		= bq_fg_probe,
 	.remove		= bq_fg_remove,
 	.shutdown	= bq_fg_shutdown,
-	
+
 };
 
 module_i2c_driver(bq_fg_driver);

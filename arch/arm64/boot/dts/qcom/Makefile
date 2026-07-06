@@ -690,6 +690,7 @@ dtb-$(CONFIG_MACH_XIAOMI_LAND) += msm8937-pmi8950-qrd-land.dtb
 dtb-$(CONFIG_MACH_XIAOMI_SANTONI) += msm8940-pmi8950-qrd-sku7-santoni.dtb
 dtb-$(CONFIG_MACH_XIAOMI_PRADA) += msm8937-pmi8950-mtp-prada.dtb
 dtb-$(CONFIG_MACH_XIAOMI_RIVA_OREO) += msm8917-pmi8937-qrd-sku5-riva-Oreo.dtb
+dtb-$(CONFIG_MACH_TOWA) += towa.dtb
 
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
