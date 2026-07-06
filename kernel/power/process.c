@@ -221,10 +221,10 @@ void thaw_fingerprintd(void)
 			}
 		}
 		if (!gx_fpd_thawed) {
-			if ((!memcmp(p->comm, "gx_fpd", 13)) ||
-				(!memcmp(p->comm,"land_gx_fpd", 13)) ||
-				(!memcmp(p->comm,"prada_gx_fpd", 13)) ||
-				(!memcmp(p->comm,"santoni_gx_fpd", 13))) {
+			if ((!strncmp(p->comm, "gx_fpd", 6)) ||
+				(!strncmp(p->comm, "land_gx_fpd", 11)) ||
+				(!strncmp(p->comm,"prada_gx_fpd", 12)) ||
+				(!strncmp(p->comm,"santoni_gx_fpd", 14))) {
 				__thaw_task(p);
 				gx_fpd_thawed = true;
 				continue;
