@@ -4,6 +4,12 @@ on:
   push:
     branches: [ j1p-port ]
   workflow_dispatch:
+    inputs:
+      DEFCONFIG:
+        description: 'Enter defconfig name'
+        required: true
+        type: string
+        default: 'PQ4002_defconfig'
 
 jobs:
   build:
@@ -34,7 +40,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-          make O=out PQ4002_defconfig
+          make O=out ${{ inputs.DEFCONFIG }}
           make O=out -j"$(nproc)" 2>&1 | tee build-log.txt
 
       - name: Upload build log
