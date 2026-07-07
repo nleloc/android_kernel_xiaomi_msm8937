@@ -9,7 +9,7 @@ on:
         description: 'Enter defconfig name'
         required: true
         type: string
-        default: 'PQ4002_defconfig'
+        default: 'PQ4002-test_defconfig'
 
 jobs:
   build:
