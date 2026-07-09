@@ -1,0 +1,8 @@
+&reserved_memory {
+	ramoops@84000000 {
+		compatible = "ramoops";
+		reg = <0x0 0x84000000 0x0 0x100000>;
+		record-size = <0x20000>;
+		console-size = <0x20000>;
+	};
+};
